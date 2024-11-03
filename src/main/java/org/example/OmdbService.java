@@ -7,12 +7,12 @@ import kong.unirest.Unirest;
 import java.util.Collections;
 import java.util.List;
 
-public class OmdbService implements MovieService {
+public class OmdbService  {
     private final String API_KEY = "85fcb8bf";
     private final String BASE_URL = "http://www.omdbapi.com/?apikey=" + API_KEY;
 
-    @Override
-    public Movie fetchMovieDetails(String title) {
+
+    public Movie fetch_Movie_Details(String title) {
         HttpResponse<JsonNode> response = Unirest.get(BASE_URL)
                 .queryString("t", title)
                 .asJson();
@@ -26,8 +26,8 @@ public class OmdbService implements MovieService {
         }
     }
 
-    @Override
-    public List<Movie> fetchNowPlayingMovies() {
+
+    public List<Movie> fetch_NowPlaying_Movies() {
         // Zwróć pustą listę, bo ta funkcjonalność nie jest obsługiwana przez OMDb
         return Collections.emptyList();
     }
