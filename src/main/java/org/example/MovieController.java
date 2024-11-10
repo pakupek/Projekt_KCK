@@ -1,10 +1,9 @@
 package org.example;
-
+import java.io.*;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,34 +17,108 @@ public class MovieController {
 
     public MovieController() {
         this.favoriteMovies = new ArrayList<>();
-
+        loadFavoriteMovies();  // Ładowanie ulubionych filmów przy starcie aplikacji
     }
 
+    //Ustawienie widoku
     public void setView(MovieView movieView) {
         this.view = movieView;
     }
 
+    // Metoda do zapisywania ulubionych filmów do pliku tekstowego (JSON)
+    public void saveFavoriteMovies() {
+        try (FileWriter file = new FileWriter("favoriteMovies.txt")) {
+            JSONArray jsonArray = new JSONArray();
+            for (Movie movie : favoriteMovies) {
+                JSONObject movieJson = new JSONObject();
+                movieJson.put("title", movie.getTitle());
+                movieJson.put("director", movie.getDirector());
+                movieJson.put("releaseDate", movie.getReleaseDate());
+                movieJson.put("overview", movie.getOverview());
+                movieJson.put("rating", movie.getRating());
+                jsonArray.put(movieJson);
+            }
+            file.write(jsonArray.toString());
+            view.displayMessage("Ulubione filmy zostały zapisane.");
+        } catch (IOException e) {
+            e.printStackTrace();
+            view.displayMessage("Błąd zapisywania do pliku.");
+        }
+    }
 
-    public Movie fetchMovieDetails(String title) {  // Detale wyszukanego filmu
+    // Metoda do ładowania ulubionych filmów z pliku tekstowego (JSON)
+    private void loadFavoriteMovies() {
+        File file = new File("favoriteMovies.txt");
+        if (!file.exists()) {
+            return;  // Jeśli plik nie istnieje, nie ładować danych
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            StringBuilder jsonContent = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                jsonContent.append(line);
+            }
+
+            JSONArray jsonArray = new JSONArray(jsonContent.toString());
+            for (int i = 0; i < jsonArray.length(); i++) {
+                JSONObject movieJson = jsonArray.getJSONObject(i);
+                String title = movieJson.getString("title");
+                String director = movieJson.optString("director", "Dane niedostępne");
+                String releaseDate = movieJson.optString("releaseDate", "Dane niedostępne");
+                String overview = movieJson.optString("overview", "Opis niedostępny");
+                String rating = movieJson.optString("rating", "Dane niedostępne");
+
+                Movie movie = new Movie(title, director, releaseDate, overview, rating);
+                favoriteMovies.add(movie);
+            }
+        } catch (IOException | org.json.JSONException e) {
+            e.printStackTrace();
+            view.displayMessage("Błąd ładowania danych z pliku.");
+        }
+    }
+
+    // Detale wyszukanego filmu
+    public Movie fetchMovieDetails(String title) {
         HttpResponse<String> response = Unirest.get("https://api.themoviedb.org/3/search/movie")
                 .queryString("language","en-US")
                 .queryString("page",1)
+                .queryString("query", title)
                 .header("accept", "application/json")
-                .header("Authorization", "Bearer " + API_KEY) // Użyj swojego klucza API
+                .header("Authorization", "Bearer " + API_KEY)
                 .asString();
 
         if (response.getStatus() == 200) {
             String json = response.getBody();
-            return parseMovie(json);
+
+            JSONObject jsonObject = new JSONObject(json);
+            JSONArray results = jsonObject.getJSONArray("results");
+
+            // Sprawdzenie czy wynik jest pusty
+            if (results.length() == 0) {
+                System.out.println("Film o tytule '" + title + "' nie został znaleziony.");
+                return null;
+            }
+
+            // Pobieranie wyników
+            JSONObject movieJson = results.getJSONObject(0);  // Indeks 0 ponieważ użytkownik szuka jednego filmu
+            String movieTitle = movieJson.optString("title", "Dane niedostępne");
+            String director = "Dane niedostępne"; // TMDb nie zwraca tego wyniku
+            String releaseDate = movieJson.optString("release_date", "Dane niedostępne").substring(0, 4);
+            String rating = movieJson.optString("vote_average", "Dane niedostępne");
+            String overview = movieJson.optString("overview", "Opis niedostępny");
+
+            // Tworzymy i zwracamy obiekt Movie
+            return new Movie(movieTitle, director, releaseDate, overview, rating);
         } else {
-            System.out.println("Film nie został znaleziony");
+            System.out.println("Błąd pobierania danych: " + response.getStatus());
             return null;
         }
     }
 
 
-
-    public List<Movie> fetchNowPlayingMovies() {    //Obecnie grane
+    //Obecnie grane filmy
+    public List<Movie> fetchNowPlayingMovies() {
         HttpResponse<String> response = Unirest.get("https://api.themoviedb.org/3/movie/now_playing")
                 .queryString("language","en-US")
                 .queryString("page",1)
@@ -62,12 +135,12 @@ public class MovieController {
             for (int i = 0; i < results.length(); i++) {
                 JSONObject movieJson = results.getJSONObject(i);
                 String title = movieJson.getString("title");
-                String director = ""; // Możesz dodać pole dla reżysera, jeśli masz te dane
+                String director = "Dane niedostępne";
                 String releaseDate = movieJson.getString("release_date").substring(0, 4);
                 double rating = movieJson.getDouble("vote_average");
                 String overview = movieJson.getString("overview");
 
-                Movie movie = new Movie(title, director, releaseDate, String.valueOf(rating),overview);
+                Movie movie = new Movie(title, director, releaseDate, overview, String.valueOf(rating));
                 movies.add(movie);
             }
         } else {
@@ -76,13 +149,15 @@ public class MovieController {
         return movies;
     }
 
+    // Najlepiej oceniane filmy
     public List<Movie> fetchTopRatedMovies(){
         HttpResponse<String> response = Unirest.get("https://api.themoviedb.org/3/movie/top_rated")
                 .queryString("language", "en-US")
                 .queryString("page", 1)
                 .header("accept", "application/json")
-                .header("Authorization", "Bearer " + API_KEY) // Użyj swojego klucza API
+                .header("Authorization", "Bearer " + API_KEY)
                 .asString();
+
         List<Movie> movies = new ArrayList<>();
         if (response.getStatus() == 200) {
             String json = response.getBody();
@@ -92,12 +167,12 @@ public class MovieController {
             for (int i = 0; i < results.length(); i++) {
                 JSONObject movieJson = results.getJSONObject(i);
                 String title = movieJson.getString("title");
-                String director = ""; // Możesz dodać pole dla reżysera, jeśli masz te dane
+                String director = "Dane niedostępne";
                 String releaseDate = movieJson.getString("release_date").substring(0, 4);
                 double rating = movieJson.getDouble("vote_average");
                 String overview = movieJson.getString("overview");
 
-                Movie movie = new Movie(title, director, releaseDate, String.valueOf(rating),overview);
+                Movie movie = new Movie(title, director, releaseDate, overview,String.valueOf(rating));
                 movies.add(movie);
             }
         } else {
@@ -106,36 +181,19 @@ public class MovieController {
         return movies;
     }
 
-    private Movie parseMovie(String json) {
-        // Implementacja parsowania JSON do obiektu Movie
-        String title = extractValue(json, "title");
-        String director = "Dane niedostępne"; // TMDb może nie zwracać reżysera w wynikach wyszukiwania
-        String year = extractValue(json, "release_date");
-        String rating = extractValue(json, "vote_average");
-
-        return new Movie(title, director, year, rating, "Opis niedostępny");
-    }
-
-    private String extractValue(String json, String key) {
-        int keyIndex = json.indexOf(key);
-        int startIndex = json.indexOf(':', keyIndex) + 1;
-        int endIndex = json.indexOf(',', startIndex);
-        if (endIndex == -1) endIndex = json.indexOf('}', startIndex);
-        return json.substring(startIndex, endIndex).replaceAll("\"", "").trim();
-    }
-
     public List<Movie> getFavoriteMovies() {
-        return new ArrayList<>(favoriteMovies); // Zwróć kopię listy ulubionych filmów
+        return new ArrayList<>(favoriteMovies); // Zwraca kopię listy ulubionych filmów
     }
 
     public void addToFavorites() {
-        String title = view.getMovieTitle(); // Uzyskaj tytuł od użytkownika
-        Movie movie = fetchMovieDetails(title); // Pobierz szczegóły filmu na podstawie tytułu
+        String title = view.promptForInput("Podaj tytuł filmu:");
+        Movie movie = fetchMovieDetails(title); // Pobranie szczegółów filmu na podstawie tytułu
         if (movie != null) {
-            favoriteMovies.add(movie); // Dodaj film do ulubionych
-            view.displayMessage("Film '" + title + "' dodany do ulubionych."); // Wyświetl komunikat potwierdzający
+            favoriteMovies.add(movie);
+            view.displayMessage("Film '" + title + "' dodany do ulubionych.");
+            saveFavoriteMovies();  // Zapisz zmodyfikowaną listę do pliku
         } else {
-            view.displayMessage("Film '" + title + "' nie został znaleziony."); // Wyświetl komunikat o błędzie
+            view.displayMessage("Film '" + title + "' nie został znaleziony.");
         }
     }
 }
