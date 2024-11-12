@@ -6,6 +6,7 @@ import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.Terminal;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import com.googlecode.lanterna.TerminalPosition;
 
 public class MovieView {
     private final Terminal terminal;
@@ -13,6 +14,8 @@ public class MovieView {
 
     private final MultiWindowTextGUI textGUI;
     private final MovieController movieController;
+
+
 
     public MovieView(MovieController movieController) throws Exception {
         this.movieController = movieController;
@@ -35,24 +38,35 @@ public class MovieView {
     // Wybranie menu z jakiej bazy mamy korzystac
     private void showMainMenu() {
         Panel mainMenuPanel = new Panel();
+        BasicWindow mainMenuWindow = new BasicWindow("Menu główne");
+        mainMenuWindow.setComponent(mainMenuPanel.withBorder(Borders.doubleLine()));
+        mainMenuWindow.setHints(java.util.Arrays.asList(Window.Hint.CENTERED));
+        mainMenuPanel.setLayoutManager(new GridLayout(1));
+
+        // Dodanie komponentów do panelu
         mainMenuPanel.addComponent(new Label("Wybierz bazę filmową:"));
-
-        Button tmdbButton = new Button("TMDb", this::showTmdbMenu);
+        Button tmdbButton = new Button("TMDb", () -> {
+            textGUI.removeWindow(mainMenuWindow); // zamyka okno główne
+            showTmdbMenu();
+        });
         Button exitButton = new Button("Zakończ", this::exitApplication);
-
         mainMenuPanel.addComponent(tmdbButton);
         mainMenuPanel.addComponent(exitButton);
 
-        // Tworzenie nowego BasicWindow z odpowiednim tytułem i panelem
-        BasicWindow mainMenuWindow = new BasicWindow("Menu główne");
-        mainMenuWindow.setComponent(mainMenuPanel); // Ustawienie komponentu panelu na oknie
 
-        textGUI.addWindowAndWait(mainMenuWindow); // Dodanie okna i oczekiwanie na zamknięcie
+
+        textGUI.addWindowAndWait(mainMenuWindow);
     }
+
 
     // Menu dla bazy Tmdb
     private void showTmdbMenu() {
         Panel tmdbPanel = new Panel();
+        // Tworzenie nowego BasicWindow
+        BasicWindow tmdbWindow = new BasicWindow("Menu TMDb");
+        tmdbWindow.setComponent(tmdbPanel); // Ustawienie komponentu panelu na oknie
+        // Wyśrodkowanie okna podmenu na ekranie
+        tmdbWindow.setHints(java.util.Arrays.asList(Window.Hint.CENTERED));
         tmdbPanel.addComponent(new Label("Menu TMDb:"));
 
         Button searchMovieButton = new Button("Wyszukaj film", this::displaySearchMovie);
@@ -60,7 +74,10 @@ public class MovieView {
         Button topRatedButton = new Button("Najlepiej oceniane filmy", this::displayTopRated);
         Button favoritesButton = new Button("Ulubione filmy", this::displayFavoriteMovies);
         Button addFavorites = new Button("Dodaj do ulubionych",() -> movieController.addToFavorites());
-        Button backButton = new Button("Powrót", this::showMainMenu);
+        Button backButton =  new Button("Powrót", () -> {
+            textGUI.removeWindow(tmdbWindow); // Zamknięcie okna podmenu
+            showMainMenu(); // Powrót do głównego menu
+        });
 
         tmdbPanel.addComponent(searchMovieButton);
         tmdbPanel.addComponent(nowPlayingButton);
@@ -69,9 +86,6 @@ public class MovieView {
         tmdbPanel.addComponent(addFavorites);
         tmdbPanel.addComponent(backButton);
 
-        // Tworzenie nowego BasicWindow
-        BasicWindow tmdbWindow = new BasicWindow("Menu TMDb");
-        tmdbWindow.setComponent(tmdbPanel); // Ustawienie komponentu panelu na oknie
 
         textGUI.addWindowAndWait(tmdbWindow); // Dodanie okna i oczekiwanie na zamknięcie
     }
@@ -124,9 +138,23 @@ public class MovieView {
 
     // Wyświetlenie detali filmu
     private void displayMovieDetails(Movie movie) {
-        String message = String.format("Tytuł: %s\nReżyser: %s\nData produkcji: %s\nOpis: %s\nOcena: %s\n",
-                movie.getTitle(), movie.getDirector(), movie.getReleaseDate(), movie.getOverview(), movie.getRating());
+        String overview = formatOverview(movie.getOverview(), 150);  // Ustawienie maksymalnej długości linii na 50 znaków
+        String message = String.format("Tytuł: %s\nReżyser: %s\nData produkcji: %s\nOpis:\n%s\nOcena: %s\n",
+                movie.getTitle(), movie.getDirector(), movie.getReleaseDate(), overview, movie.getRating());
         displayMessage(message);
+    }
+
+    // Metoda formatująca overview
+    private String formatOverview(String overview, int maxLineLength) {
+        StringBuilder formattedOverview = new StringBuilder();
+        int index = 0;
+        while (index < overview.length()) {
+            // Dodaje nową linię co maxLineLength znaków
+            int end = Math.min(index + maxLineLength, overview.length());
+            formattedOverview.append(overview, index, end).append("\n");
+            index = end;
+        }
+        return formattedOverview.toString();
     }
 
     // Wyświetlenie wiadomości dla użytkownika
@@ -157,8 +185,13 @@ public class MovieView {
         BasicWindow messageWindow = new BasicWindow("Informacja");
         messageWindow.setComponent(messagePanel);
 
+        // Ustawienie wskazówek, aby okno pojawiło się na górze terminala
+        messageWindow.setHints(java.util.Arrays.asList(Window.Hint.FIXED_POSITION));
+        messageWindow.setPosition(new TerminalPosition(0, 0)); // Ustawienie pozycji na górę ekranu
+
         textGUI.addWindowAndWait(messageWindow);
     }
+
 
     // Okno do wprowadzenia danych od użytkownika
     protected String promptForInput(String prompt) {
